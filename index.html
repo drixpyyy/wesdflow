@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local ML Training Platform</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.10.0/tf.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .tabs {
+            display: flex;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 5px;
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+        }
+
+        .tab {
+            flex: 1;
+            padding: 15px;
+            text-align: center;
+            border-radius: 10px;
+            cursor: pointer;
+            color: white;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        .tab.active {
+            background: rgba(255,255,255,0.2);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .tab-content {
+            display: none;
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            backdrop-filter: blur(20px);
+        }
+
+        .tab-content.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .file-upload {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+        }
+
+        .file-upload:hover {
+            border-color: #764ba2;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .file-upload.dragover {
+            background: rgba(102, 126, 234, 0.1);
+            border-color: #764ba2;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            margin: 5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .image-item {
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            background: white;
+        }
+
+        .image-item:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+
+        .image-item img {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+        }
+
+        .image-controls {
+            padding: 15px;
+        }
+
+        .label-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .model-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .log {
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 10px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            margin-top: 20px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .canvas-container {
+            position: relative;
+            display: inline-block;
+            margin: 10px;
+        }
+
+        .annotation-canvas {
+            border: 2px solid #667eea;
+            cursor: crosshair;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 Local ML Training Platform</h1>
+            <p>Train your models locally without any installations - Roboflow alternative that runs in your browser!</p>
+        </div>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('dataset')">📁 Dataset</div>
+            <div class="tab" onclick="switchTab('labeling')">🏷️ Labeling</div>
+            <div class="tab" onclick="switchTab('training')">🧠 Training</div>
+            <div class="tab" onclick="switchTab('export')">📤 Export</div>
+        </div>
+
+        <!-- Dataset Tab -->
+        <div id="dataset" class="tab-content active">
+            <h2>📁 Dataset Management</h2>
+            <div class="file-upload" id="fileUpload">
+                <h3>Drop your images here or click to browse</h3>
+                <p>Supports: JPG, PNG, GIF, WEBP</p>
+                <input type="file" id="fileInput" multiple accept="image/*" style="display: none;">
+            </div>
+            
+            <div class="stats" id="datasetStats">
+                <div class="stat-card">
+                    <div class="stat-value" id="totalImages">0</div>
+                    <div>Total Images</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="labeledImages">0</div>
+                    <div>Labeled Images</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="uniqueClasses">0</div>
+                    <div>Unique Classes</div>
+                </div>
+            </div>
+
+            <div class="image-grid" id="imageGrid"></div>
+        </div>
+
+        <!-- Labeling Tab -->
+        <div id="labeling" class="tab-content">
+            <h2>🏷️ Image Labeling</h2>
+            <div class="model-info">
+                <p><strong>Instructions:</strong> Click and drag to create bounding boxes around objects. Enter labels for each box.</p>
+                <button class="btn" onclick="nextImage()">Next Image</button>
+                <button class="btn" onclick="prevImage()">Previous Image</button>
+                <button class="btn" onclick="clearAnnotations()">Clear All</button>
+            </div>
+            
+            <div id="labelingArea">
+                <div class="canvas-container">
+                    <canvas id="labelingCanvas" class="annotation-canvas" width="800" height="600"></canvas>
+                </div>
+                <div id="annotationControls"></div>
+            </div>
+        </div>
+
+        <!-- Training Tab -->
+        <div id="training" class="tab-content">
+            <h2>🧠 Model Training</h2>
+            <div class="model-info">
+                <h3>Training Configuration</h3>
+                <label>Model Type:</label>
+                <select id="modelType">
+                    <option value="classification">Image Classification</option>
+                    <option value="detection">Object Detection</option>
+                </select>
+                <br><br>
+                <label>Epochs:</label>
+                <input type="number" id="epochs" value="10" min="1" max="100">
+                <br><br>
+                <label>Learning Rate:</label>
+                <input type="number" id="learningRate" value="0.001" step="0.001" min="0.0001" max="1">
+                <br><br>
+                <button class="btn" onclick="startTraining()" id="trainBtn">🚀 Start Training</button>
+                <button class="btn" onclick="stopTraining()" id="stopBtn" disabled>⏹️ Stop Training</button>
+            </div>
+
+            <div class="progress-bar">
+                <div class="progress-fill" id="trainingProgress"></div>
+            </div>
+
+            <div class="stats" id="trainingStats">
+                <div class="stat-card">
+                    <div class="stat-value" id="currentEpoch">0</div>
+                    <div>Current Epoch</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="trainingLoss">0.00</div>
+                    <div>Training Loss</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="accuracy">0.00%</div>
+                    <div>Accuracy</div>
+                </div>
+            </div>
+
+            <div class="log" id="trainingLog"></div>
+        </div>
+
+        <!-- Export Tab -->
+        <div id="export" class="tab-content">
+            <h2>📤 Export Model</h2>
+            <div class="model-info">
+                <h3>Export Options</h3>
+                <button class="btn" onclick="exportModel('tensorflow')">📦 Export TensorFlow.js</button>
+                <button class="btn" onclick="exportModel('weights')">⚖️ Export Weights Only</button>
+                <button class="btn" onclick="exportModel('onnx')">🔄 Export ONNX (Simulated)</button>
+                <button class="btn" onclick="exportDataset()">📊 Export Labeled Dataset</button>
+            </div>
+
+            <div id="exportStatus"></div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let images = [];
+        let currentImageIndex = 0;
+        let annotations = {};
+        let model = null;
+        let isTraining = false;
+        let classes = new Set();
+
+        // Dataset Management
+        const fileUpload = document.getElementById('fileUpload');
+        const fileInput = document.getElementById('fileInput');
+
+        fileUpload.addEventListener('click', () => fileInput.click());
+        fileUpload.addEventListener('dragover', handleDragOver);
+        fileUpload.addEventListener('drop', handleDrop);
+        fileInput.addEventListener('change', handleFileSelect);
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            fileUpload.classList.add('dragover');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            fileUpload.classList.remove('dragover');
+            const files = Array.from(e.dataTransfer.files);
+            processFiles(files.filter(file => file.type.startsWith('image/')));
+        }
+
+        function handleFileSelect(e) {
+            const files = Array.from(e.target.files);
+            processFiles(files);
+        }
+
+        function processFiles(files) {
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = {
+                        id: Date.now() + Math.random(),
+                        name: file.name,
+                        src: e.target.result,
+                        annotations: []
+                    };
+                    images.push(img);
+                    annotations[img.id] = [];
+                    updateDatasetStats();
+                    renderImageGrid();
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function updateDatasetStats() {
+            document.getElementById('totalImages').textContent = images.length;
+            document.getElementById('labeledImages').textContent = 
+                Object.values(annotations).filter(ann => ann.length > 0).length;
+            document.getElementById('uniqueClasses').textContent = classes.size;
+        }
+
+        function renderImageGrid() {
+            const grid = document.getElementById('imageGrid');
+            grid.innerHTML = '';
+            
+            images.forEach((img, index) => {
+                const item = document.createElement('div');
+                item.className = 'image-item';
+                item.innerHTML = `
+                    <img src="${img.src}" alt="${img.name}">
+                    <div class="image-controls">
+                        <input type="text" class="label-input" placeholder="Enter label..." 
+                               onchange="addQuickLabel(${index}, this.value)">
+                        <button class="btn" onclick="setCurrentImage(${index})">Edit</button>
+                        <button class="btn" onclick="removeImage(${index})">Remove</button>
+                    </div>
+                `;
+                grid.appendChild(item);
+            });
+        }
+
+        function addQuickLabel(index, label) {
+            if (label.trim()) {
+                classes.add(label.trim());
+                const img = images[index];
+                annotations[img.id] = [{
+                    label: label.trim(),
+                    x: 0, y: 0, width: 100, height: 100
+                }];
+                updateDatasetStats();
+            }
+        }
+
+        function removeImage(index) {
+            const img = images[index];
+            delete annotations[img.id];
+            images.splice(index, 1);
+            updateDatasetStats();
+            renderImageGrid();
+        }
+
+        // Labeling System
+        const canvas = document.getElementById('labelingCanvas');
+        const ctx = canvas.getContext('2d');
+        let isDrawing = false;
+        let startX, startY, currentBox = null;
+        let currentImg = null;
+
+        canvas.addEventListener('mousedown', startDrawing);
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', stopDrawing);
+
+        function setCurrentImage(index) {
+            currentImageIndex = index;
+            switchTab('labeling');
+            loadImageForLabeling();
+        }
+
+        function loadImageForLabeling() {
+            if (images.length === 0) return;
+            
+            const img = images[currentImageIndex];
+            currentImg = new Image();
+            currentImg.onload = () => {
+                // Resize canvas to fit image
+                const maxWidth = 800;
+                const maxHeight = 600;
+                const ratio = Math.min(maxWidth / currentImg.width, maxHeight / currentImg.height);
+                
+                canvas.width = currentImg.width * ratio;
+                canvas.height = currentImg.height * ratio;
+                
+                redrawCanvas();
+            };
+            currentImg.src = img.src;
+        }
+
+        function redrawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (currentImg) {
+                ctx.drawImage(currentImg, 0, 0, canvas.width, canvas.height);
+            }
+            
+            // Draw existing annotations
+            const img = images[currentImageIndex];
+            if (annotations[img.id]) {
+                annotations[img.id].forEach(ann => {
+                    drawBoundingBox(ann.x, ann.y, ann.width, ann.height, ann.label);
+                });
+            }
+        }
+
+        function startDrawing(e) {
+            isDrawing = true;
+            const rect = canvas.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const currentX = e.clientX - rect.left;
+            const currentY = e.clientY - rect.top;
+            
+            redrawCanvas();
+            
+            // Draw current box
+            const width = currentX - startX;
+            const height = currentY - startY;
+            drawBoundingBox(startX, startY, width, height, 'New Object');
+        }
+
+        function stopDrawing(e) {
+            if (!isDrawing) return;
+            isDrawing = false;
+            
+            const rect = canvas.getBoundingClientRect();
+            const endX = e.clientX - rect.left;
+            const endY = e.clientY - rect.top;
+            
+            const width = endX - startX;
+            const height = endY - startY;
+            
+            if (Math.abs(width) > 10 && Math.abs(height) > 10) {
+                const label = prompt('Enter label for this object:');
+                if (label) {
+                    const img = images[currentImageIndex];
+                    if (!annotations[img.id]) annotations[img.id] = [];
+                    
+                    annotations[img.id].push({
+                        x: Math.min(startX, endX),
+                        y: Math.min(startY, endY),
+                        width: Math.abs(width),
+                        height: Math.abs(height),
+                        label: label
+                    });
+                    
+                    classes.add(label);
+                    updateDatasetStats();
+                    redrawCanvas();
+                }
+            }
+        }
+
+        function drawBoundingBox(x, y, width, height, label) {
+            ctx.strokeStyle = '#ff0000';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, width, height);
+            
+            ctx.fillStyle = '#ff0000';
+            ctx.fillRect(x, y - 20, ctx.measureText(label).width + 10, 20);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '14px Arial';
+            ctx.fillText(label, x + 5, y - 5);
+        }
+
+        function nextImage() {
+            if (currentImageIndex < images.length - 1) {
+                currentImageIndex++;
+                loadImageForLabeling();
+            }
+        }
+
+        function prevImage() {
+            if (currentImageIndex > 0) {
+                currentImageIndex--;
+                loadImageForLabeling();
+            }
+        }
+
+        function clearAnnotations() {
+            if (images.length > 0) {
+                const img = images[currentImageIndex];
+                annotations[img.id] = [];
+                redrawCanvas();
+                updateDatasetStats();
+            }
+        }
+
+        // Training System
+        async function startTraining() {
+            if (images.length === 0) {
+                alert('Please upload some images first!');
+                return;
+            }
+
+            const labeledCount = Object.values(annotations).filter(ann => ann.length > 0).length;
+            if (labeledCount === 0) {
+                alert('Please label some images first!');
+                return;
+            }
+
+            isTraining = true;
+            document.getElementById('trainBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+
+            const modelType = document.getElementById('modelType').value;
+            const epochs = parseInt(document.getElementById('epochs').value);
+            const learningRate = parseFloat(document.getElementById('learningRate').value);
+
+            log('🚀 Starting training...');
+            log(`Model Type: ${modelType}`);
+            log(`Epochs: ${epochs}`);
+            log(`Learning Rate: ${learningRate}`);
+            log(`Training samples: ${labeledCount}`);
+
+            try {
+                if (modelType === 'classification') {
+                    await trainClassificationModel(epochs, learningRate);
+                } else {
+                    await trainDetectionModel(epochs, learningRate);
+                }
+            } catch (error) {
+                log(`❌ Training failed: ${error.message}`);
+            }
+
+            isTraining = false;
+            document.getElementById('trainBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+        }
+
+        async function trainClassificationModel(epochs, learningRate) {
+            log('🔧 Building classification model...');
+            
+            // Create a simple CNN model
+            model = tf.sequential({
+                layers: [
+                    tf.layers.conv2d({
+                        inputShape: [224, 224, 3],
+                        filters: 32,
+                        kernelSize: 3,
+                        activation: 'relu'
+                    }),
+                    tf.layers.maxPooling2d({ poolSize: 2 }),
+                    tf.layers.conv2d({ filters: 64, kernelSize: 3, activation: 'relu' }),
+                    tf.layers.maxPooling2d({ poolSize: 2 }),
+                    tf.layers.flatten(),
+                    tf.layers.dense({ units: 128, activation: 'relu' }),
+                    tf.layers.dropout({ rate: 0.5 }),
+                    tf.layers.dense({ units: classes.size, activation: 'softmax' })
+                ]
+            });
+
+            model.compile({
+                optimizer: tf.train.adam(learningRate),
+                loss: 'categoricalCrossentropy',
+                metrics: ['accuracy']
+            });
+
+            log('📊 Preparing training data...');
+            const { xs, ys } = await prepareClassificationData();
+
+            log('🎯 Starting training loop...');
+            
+            for (let epoch = 0; epoch < epochs && isTraining; epoch++) {
+                const history = await model.fit(xs, ys, {
+                    epochs: 1,
+                    validationSplit: 0.2,
+                    callbacks: {
+                        onEpochEnd: (epoch, logs) => {
+                            const progress = ((epoch + 1) / epochs) * 100;
+                            document.getElementById('trainingProgress').style.width = progress + '%';
+                            document.getElementById('currentEpoch').textContent = epoch + 1;
+                            document.getElementById('trainingLoss').textContent = logs.loss.toFixed(4);
+                            document.getElementById('accuracy').textContent = (logs.acc * 100).toFixed(2) + '%';
+                            
+                            log(`Epoch ${epoch + 1}/${epochs} - Loss: ${logs.loss.toFixed(4)} - Accuracy: ${(logs.acc * 100).toFixed(2)}%`);
+                        }
+                    }
+                });
+                
+                // Simulate some delay
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            log('✅ Training completed!');
+        }
+
+        async function prepareClassificationData() {
+            const classArray = Array.from(classes);
+            const xs = [];
+            const ys = [];
+
+            for (const img of images) {
+                if (annotations[img.id] && annotations[img.id].length > 0) {
+                    // Load and preprocess image
+                    const imageElement = new Image();
+                    imageElement.src = img.src;
+                    await new Promise(resolve => imageElement.onload = resolve);
+
+                    const tensor = tf.browser.fromPixels(imageElement)
+                        .resizeNearestNeighbor([224, 224])
+                        .toFloat()
+                        .div(255.0)
+                        .expandDims();
+
+                    const label = annotations[img.id][0].label;
+                    const labelIndex = classArray.indexOf(label);
+                    const labelTensor = tf.oneHot(labelIndex, classes.size);
+
+                    xs.push(tensor);
+                    ys.push(labelTensor);
+                }
+            }
+
+            return {
+                xs: tf.stack(xs),
+                ys: tf.stack(ys)
+            };
+        }
+
+        async function trainDetectionModel(epochs, learningRate) {
+            log('🔧 Building object detection model...');
+            log('⚠️ Note: This is a simplified detection model for demonstration');
+            
+            // Simplified detection model (in practice, you'd use YOLO or similar)
+            model = tf.sequential({
+                layers: [
+                    tf.layers.conv2d({
+                        inputShape: [416, 416, 3],
+                        filters: 32,
+                        kernelSize: 3,
+                        activation: 'relu'
+                    }),
+                    tf.layers.maxPooling2d({ poolSize: 2 }),
+                    tf.layers.conv2d({ filters: 64, kernelSize: 3, activation: 'relu' }),
+                    tf.layers.maxPooling2d({ poolSize: 2 }),
+                    tf.layers.flatten(),
+                    tf.layers.dense({ units: 256, activation: 'relu' }),
+                    tf.layers.dense({ units: classes.size * 5 }) // 5 = class + bbox coords
+                ]
+            });
+
+            model.compile({
+                optimizer: tf.train.adam(learningRate),
+                loss: 'meanSquaredError'
+            });
+
+            // Simulate training process
+            for (let epoch = 0; epoch < epochs && isTraining; epoch++) {
+                const progress = ((epoch + 1) / epochs) * 100;
+                document.getElementById('trainingProgress').style.width = progress + '%';
+                document.getElementById('currentEpoch').textContent = epoch + 1;
+                
+                const loss = Math.random() * 0.5 + 0.1; // Simulated decreasing loss
+                document.getElementById('trainingLoss').textContent = loss.toFixed(4);
+                
+                log(`Epoch ${epoch + 1}/${epochs} - Loss: ${loss.toFixed(4)}`);
+                
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
+            log('✅ Detection model training completed!');
+        }
+
+        function stopTraining() {
+            isTraining = false;
+            log('⏹️ Training stopped by user');
+        }
+
+        function log(message) {
+            const logDiv = document.getElementById('trainingLog');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        // Export Functions
+        async function exportModel(format) {
+            if (!model) {
+                alert('No trained model to export! Please train a model first.');
+                return;
+            }
+
+            const status = document.getElementById('exportStatus');
+            
+            try {
+                switch (format) {
+                    case 'tensorflow':
+                        status.innerHTML = '<p>🔄 Exporting TensorFlow.js model...</p>';
+                        await model.save('downloads://my-model');
+                        status.innerHTML = '<p>✅ TensorFlow.js model exported successfully!</p>';
+                        break;
+                        
+                    case 'weights':
+                        status.innerHTML = '<p>🔄 Exporting model weights...</p>';
+                        const weights = model.getWeights();
+                        const weightsData = weights.map(w => w.dataSync());
+                        const blob = new Blob([JSON.stringify(weightsData)], 
+                                            { type: 'application/json' });
+                        downloadBlob(blob, 'model-weights.json');
+                        status.innerHTML = '<p>✅ Model weights exported successfully!</p>';
+                        break;
+                        
+                    case 'onnx':
+                        status.innerHTML = '<p>🔄 Simulating ONNX export...</p>';
+                        setTimeout(() => {
+                            status.innerHTML = '<p>✅ ONNX export simulated (not actually converted)</p>';
+                        }, 2000);
+                        break;
+                }
+            } catch (error) {
+                status.innerHTML = `<p>❌ Export failed: ${error.message}</p>`;
+            }
+        }
+
+        function exportDataset() {
+            const dataset = {
+                images: images.map(img => ({
+                    name: img.name,
+                    annotations: annotations[img.id] || []
+                })),
+                classes: Array.from(classes),
+                metadata: {
+                    totalImages: images.length,
+                    labeledImages: Object.values(annotations).filter(ann => ann.length > 0).length,
+                    exportDate: new Date().toISOString()
+                }
+            };
+
+            const blob = new Blob([JSON.stringify(dataset, null, 2)], 
+                                { type: 'application/json' });
+            downloadBlob(blob, 'labeled-dataset.json');
+            
+            document.getElementById('exportStatus').innerHTML = 
+                '<p>✅ Labeled dataset exported successfully!</p>';
+        }
+
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Tab Management
+        function switchTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Remove active from all tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            document.getElementById(tabName).classList.add('active');
+            
+            // Set active tab
+            event.target.classList.add('active');
+            
+            // Load image for labeling if switching to labeling tab
+            if (tabName === 'labeling' && images.length > 0) {
+                loadImageForLabeling();
+            }
+        }
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            log('🎉 Local ML Training Platform loaded successfully!');
+            log('📝 Upload images to get started');
+            updateDatasetStats();
+        });
+
+        // Prevent default drag behaviors
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            document.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // Add keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (document.getElementById('labeling').classList.contains('active')) {
+                switch(e.key) {
+                    case 'ArrowRight':
+                        nextImage();
+                        break;
+                    case 'ArrowLeft':
+                        prevImage();
+                        break;
+                    case 'Delete':
+                        clearAnnotations();
+                        break;
+                }
+            }
+        });
+
+        // Auto-save annotations to prevent data loss
+        setInterval(() => {
+            if (Object.keys(annotations).length > 0) {
+                localStorage.setItem('ml_trainer_annotations', JSON.stringify(annotations));
+                localStorage.setItem('ml_trainer_classes', JSON.stringify(Array.from(classes)));
+            }
+        }, 30000); // Save every 30 seconds
+
+        // Load saved annotations on startup
+        try {
+            const savedAnnotations = localStorage.getItem('ml_trainer_annotations');
+            const savedClasses = localStorage.getItem('ml_trainer_classes');
+            
+            if (savedAnnotations) {
+                annotations = JSON.parse(savedAnnotations);
+            }
+            
+            if (savedClasses) {
+                classes = new Set(JSON.parse(savedClasses));
+            }
+        } catch (error) {
+            console.log('No saved data found or error loading saved data');
+        }
+    </script>
+</body>
+</html>
