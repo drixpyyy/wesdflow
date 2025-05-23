@@ -43,7 +43,6 @@
         .stat-value { font-size: 2rem; font-weight: bold; margin-bottom: 5px; }
         .canvas-container { position: relative; display: inline-block; margin: 10px; max-width: 100%; }
         .annotation-canvas { border: 2px solid #667eea; cursor: crosshair; display: block; max-width: 100%; height: auto; }
-        /* NEW: Style for loss breakdown */
         .loss-breakdown span { margin-right: 15px; }
     </style>
 </head>
@@ -101,18 +100,17 @@
             <div class="model-info">
                 <h3>Training Configuration</h3>
                 <label for="modelType">Model Type:</label>
-                <select id="modelType" onchange="updateTrainingUI()"> <!-- NEW: onchange handler -->
+                <select id="modelType" onchange="updateTrainingUI()">
                     <option value="classification">Image Classification</option>
                     <option value="detection" selected>Object Detection</option>
                 </select>
                 <br><br>
                 <label for="epochs">Epochs:</label>
-                <input type="number" id="epochs" value="20" min="1" max="500"> <!-- Default epochs reduced for faster testing -->
+                <input type="number" id="epochs" value="20" min="1" max="500">
                 <br><br>
                 <label for="learningRate">Learning Rate:</label>
                 <input type="number" id="learningRate" value="0.001" step="0.0001" min="0.00001" max="0.1">
                 <br><br>
-                <!-- NEW: Batch size for detection -->
                 <div id="batchSizeConfig" style="display: none;"> 
                     <label for="batchSize">Batch Size:</label>
                     <input type="number" id="batchSize" value="4" min="1" max="32">
@@ -129,7 +127,6 @@
                 <div class="stat-card">
                     <div class="stat-value" id="trainingLoss">0.00</div>
                     <div>Total Loss</div>
-                    <!-- NEW: Loss breakdown for detection -->
                     <div id="lossBreakdownDisplay" style="font-size: 0.8em; margin-top: 5px; display:none;">
                         <span id="locLossDisplay">Loc: 0.00</span>
                         <span id="classLossDisplay">Class: 0.00</span>
@@ -158,213 +155,133 @@
     </div>
 
     <script>
-        // Global variables and JSZip check from previous version...
+        // Global variables and JSZip check
         let images = []; 
         let currentImageIndex = 0;
         let model = null;
         let isTraining = false;
-        let classMap = {}; // className: integerId
+        let classMap = {}; 
         let nextClassId = 0;
-        const IMG_WIDTH = 224; // Fixed input size for models
+        const IMG_WIDTH = 224; 
         const IMG_HEIGHT = 224;
 
         if (typeof JSZip === 'undefined') {
             alert("JSZip library not loaded. ZIP file processing will not work. Please check your internet connection or the JSZip CDN link.");
         }
-        // --- Dataset Management, Labeling System (mostly same as your v3) ---
-        // These will be kept concise here for brevity, assuming they are largely functional from the previous step.
-        // Key functions: handleCombinedDrop, processZipFile, processImageFiles, processAnnotationFiles,
-        // parseYoloTxtAnnotations, parseCocoJsonAnnotations, updateDatasetStats, renderImageGrid,
-        // setCurrentImage, loadImageForLabeling, redrawCanvas, handleCanvasMouseDown/Move/Up, drawBoundingBox,
-        // nextImage, prevImage, clearAnnotations.
-        // For brevity, I'll skip pasting all of that, but it's assumed to be present and working.
-        // I will include the stubs for functions that need to be present.
-
-        const combinedFileUpload = document.getElementById('combinedFileUpload');
-        const combinedFileInput = document.getElementById('combinedFileInput');
-        combinedFileUpload.addEventListener('click', () => combinedFileInput.click());
-        combinedFileUpload.addEventListener('dragover', (e) => handleDragOver(e, combinedFileUpload));
-        combinedFileUpload.addEventListener('dragleave', (e) => handleDragLeave(e, combinedFileUpload));
-        combinedFileUpload.addEventListener('drop', handleCombinedDrop);
-        combinedFileInput.addEventListener('change', handleCombinedFileSelect);
-        function handleDragOver(e, element) { e.preventDefault(); element.classList.add('dragover'); }
-        function handleDragLeave(e, element) { element.classList.remove('dragover'); }
-        async function handleCombinedDrop(e) { e.preventDefault(); combinedFileUpload.classList.remove('dragover'); await processCombinedFiles(Array.from(e.dataTransfer.files));}
-        async function handleCombinedFileSelect(e) { await processCombinedFiles(Array.from(e.target.files));}
+        // --- Dataset Management, Labeling System (mostly same as your v3/v4/v5) ---
+        // For brevity, this section will be heavily condensed. The actual implementation is assumed from previous versions.
+        const combinedFileUpload=document.getElementById('combinedFileUpload'),combinedFileInput=document.getElementById('combinedFileInput');combinedFileUpload.addEventListener('click',()=>combinedFileInput.click());combinedFileUpload.addEventListener('dragover',e=>handleDragOver(e,combinedFileUpload));combinedFileUpload.addEventListener('dragleave',e=>handleDragLeave(e,combinedFileUpload));combinedFileUpload.addEventListener('drop',handleCombinedDrop);combinedFileInput.addEventListener('change',handleCombinedFileSelect);function handleDragOver(e,el){e.preventDefault();el.classList.add('dragover');}
+        function handleDragLeave(e,el){el.classList.remove('dragover');}
+        async function handleCombinedDrop(e){e.preventDefault();combinedFileUpload.classList.remove('dragover');await processCombinedFiles(Array.from(e.dataTransfer.files));}
+        async function handleCombinedFileSelect(e){await processCombinedFiles(Array.from(e.target.files));}
+        async function processCombinedFiles(files){log("Processing uploaded files...");const iF=[],yF=[],cF=[],zF=[];for(const f of files)
+        {if(f.type.startsWith('image/'))iF.push(f);else if(f.name.endsWith('.txt'))yF.push(f);else if(f.name.endsWith('.json'))cF.push(f);else if(f.name.endsWith('.zip'))zF.push(f);else log(`⚠️ Unsupported: ${f.name}`);}
+        for(const z of zF)await processZipFile(z);if(iF.length>0)await processImageFiles(iF);if(yF.length>0)await processAnnotationFiles(yF,'yolo');if(cF.length>0)await processAnnotationFiles(cF,'coco');updateDatasetStats();renderImageGrid();if(images.length>0&¤tImageIndex>=images.length)currentImageIndex=0;if(images.length>0)loadImageForLabeling();}
+        async function processZipFile(zipFile){log(`⚙️ ZIP: ${zipFile.name}`);const jszip=new JSZip(),zip=await jszip.loadAsync(zipFile);const iFZ=[],yFZ=[];let cFZ=null;for(const p in zip.files){const fE=zip.files[p];if(!fE.dir){const fN=p.split('/').pop(),e=fN.split('.').pop().toLowerCase();
+        if(['jpg','jpeg','png','webp'].includes(e))iFZ.push(new File([await fE.async('blob')],fN));else if(e==='txt')yFZ.push({name:fN,content:await fE.async('string')});else if(fN.endsWith('.coco.json')||fN==='annotations.json'||p.toLowerCase().includes('_annotations.coco.json'))cFZ={name:fN,content:await fE.async('string'), path: p};}} // Store path for context
+        if(iFZ.length>0){log(`Found ${iFZ.length} images in ZIP.`); await processImageFiles(iFZ);} else {log("No image files found in ZIP.");}
+        if(cFZ){log(`Processing COCO JSON from ZIP: ${cFZ.path}`);await parseCocoJsonAnnotations(cFZ.content);}else if(yFZ.length>0){log(`Processing ${yFZ.length} YOLO TXT from ZIP...`);for(const y of yFZ){const iNP=y.name.replace(/\.[^/.]+$/,"");const tI=images.find(i=>i.name.startsWith(iNP+'.'));if(tI)parseYoloTxtAnnotations(y.content,tI);else log(`⚠️ No match for YOLO ${y.name}`);}}else{log("No COCO/YOLO annotations found in ZIP.");}log(`✅ ZIP ${zipFile.name} done.`);}
+        async function processImageFiles(files){for(const f of files){if(images.find(i=>i.id===f.name))continue;const r=new FileReader();await new Promise(res=>{r.onload=eR=>{const tI=new Image();tI.onload=()=>{images.push({id:f.name,name:f.name,src:eR.target.result,annotations:[],originalWidth:tI.width,originalHeight:tI.height,tensor:null});res();};tI.onerror=()=>{log(`Error loading image ${f.name} to get dimensions.`);res();};tI.src=eR.target.result;};r.onerror=()=>{log(`Error reading file ${f.name}`);res();};r.readAsDataURL(f);});}}
+        async function processAnnotationFiles(files,format){for(const f of files){const r=new FileReader();await new Promise(res=>{r.onload=eR=>{const c=eR.target.result;if(format==='yolo'){const iNP=f.name.replace(/\.[^/.]+$/,"");const tI=images.find(i=>i.name.startsWith(iNP+'.'));if(tI)parseYoloTxtAnnotations(c,tI);else log(`⚠️ No match for YOLO TXT: ${f.name}`);}else if(format==='coco')parseCocoJsonAnnotations(c);res();};r.readAsText(f);});}}
+        function parseYoloTxtAnnotations(txt,imgObj){if(!imgObj){log("⚠️ parseYoloTxtAnnotations: imageObject is null."); return;} imgObj.annotations=[];txt.trim().split('\n').forEach(l=>{const p=l.trim().split(' ');if(p.length!==5)return;const cId=parseInt(p[0]);let lab=`class_${cId}`;for(const cn in classMap)if(classMap[cn]===cId)lab=cn;if(!Object.values(classMap).includes(cId)&&!classMap[lab])classMap[lab]=cId;if(cId>=nextClassId)nextClassId=cId+1;const w=parseFloat(p[3])*imgObj.originalWidth,h=parseFloat(p[4])*imgObj.originalHeight,x=parseFloat(p[1])*imgObj.originalWidth-w/2,y=parseFloat(p[2])*imgObj.originalHeight-h/2;imgObj.annotations.push({x,y,width:w,height:h,label:lab,classId:cId});});}
         
-        async function processCombinedFiles(files) { /* ... As in previous version ... */ 
-            log("Processing uploaded files...");
-            const imageFiles = [], yoloTxtFiles = [], cocoJsonFiles = [], zipFiles = [];
-            for (const file of files) {
-                if (file.type.startsWith('image/')) imageFiles.push(file);
-                else if (file.name.endsWith('.txt')) yoloTxtFiles.push(file);
-                else if (file.name.endsWith('.json')) cocoJsonFiles.push(file);
-                else if (file.name.endsWith('.zip')) zipFiles.push(file);
-                else log(`⚠️ Unsupported file type: ${file.name}`);
-            }
-            for (const zipFile of zipFiles) await processZipFile(zipFile);
-            if (imageFiles.length > 0) await processImageFiles(imageFiles);
-            if (yoloTxtFiles.length > 0) await processAnnotationFiles(yoloTxtFiles, 'yolo');
-            if (cocoJsonFiles.length > 0) await processAnnotationFiles(cocoJsonFiles, 'coco');
-            updateDatasetStats(); renderImageGrid();
-            if (images.length > 0 && currentImageIndex >= images.length) currentImageIndex = 0;
-            if (images.length > 0) loadImageForLabeling();
-        }
-        async function processZipFile(zipFile) { /* ... As in previous version ... */ 
-            log(`⚙️ Processing ZIP: ${zipFile.name}`);
-            const jszip = new JSZip(); const zip = await jszip.loadAsync(zipFile);
-            const imageFilesFromZip = [], yoloTxtFilesFromZip = []; let cocoJsonFileFromZip = null;
-            for (const filePath in zip.files) {
-                const fileEntry = zip.files[filePath];
-                if (!fileEntry.dir) {
-                    const fileName = filePath.split('/').pop(); const ext = fileName.split('.').pop().toLowerCase();
-                    if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) imageFilesFromZip.push(new File([await fileEntry.async('blob')], fileName));
-                    else if (ext === 'txt') yoloTxtFilesFromZip.push({ name: fileName, content: await fileEntry.async('string')});
-                    else if (fileName.endsWith('.coco.json') || fileName === 'annotations.json') cocoJsonFileFromZip = { name: fileName, content: await fileEntry.async('string')};
-                }
-            }
-            if (imageFilesFromZip.length > 0) await processImageFiles(imageFilesFromZip);
-            if (cocoJsonFileFromZip) await parseCocoJsonAnnotations(cocoJsonFileFromZip.content);
-            else if (yoloTxtFilesFromZip.length > 0) {
-                for (const yoloFile of yoloTxtFilesFromZip) {
-                    const imgNamePart = yoloFile.name.replace(/\.[^/.]+$/, "");
-                    const targetImg = images.find(img => img.name.startsWith(imgNamePart + '.'));
-                    if (targetImg) parseYoloTxtAnnotations(yoloFile.content, targetImg);
-                }
-            }
-            log(`✅ ZIP ${zipFile.name} processed.`);
-        }
-        async function processImageFiles(files) { /* ... As in previous version ... */ 
-             for (const file of files) {
-                if (images.find(img => img.id === file.name)) continue;
-                const reader = new FileReader();
-                await new Promise(resolve => {
-                    reader.onload = e_reader => {
-                        const tempImg = new Image();
-                        tempImg.onload = () => images.push({ id: file.name, name: file.name, src: e_reader.target.result, annotations: [], originalWidth: tempImg.width, originalHeight: tempImg.height, tensor: null });
-                        tempImg.src = e_reader.target.result; resolve();
-                    }; reader.readAsDataURL(file);
-                });
-            }
-        }
-        async function processAnnotationFiles(files, format) { /* ... As in previous version ... */ 
-            for (const file of files) {
-                const reader = new FileReader();
-                await new Promise(resolve => {
-                    reader.onload = e_reader => {
-                        const content = e_reader.target.result;
-                        if (format === 'yolo') {
-                            const imgNamePart = file.name.replace(/\.[^/.]+$/, "");
-                            const targetImg = images.find(img => img.name.startsWith(imgNamePart + '.'));
-                            if (targetImg) parseYoloTxtAnnotations(content, targetImg);
-                        } else if (format === 'coco') parseCocoJsonAnnotations(content);
-                        resolve();
-                    }; reader.readAsText(file);
-                });
-            }
-        }
-        function parseYoloTxtAnnotations(txtContent, imageObject) { /* ... As in previous version ... */
-            if (!imageObject) return; imageObject.annotations = []; 
-            txtContent.trim().split('\n').forEach(line => {
-                const p = line.trim().split(' '); if (p.length !== 5) return;
-                const classIdFromFile = parseInt(p[0]); let label = `class_${classIdFromFile}`;
-                for (const cn in classMap) if (classMap[cn] === classIdFromFile) label = cn;
-                if (!Object.values(classMap).includes(classIdFromFile) && !classMap[label]) classMap[label] = classIdFromFile;
-                if (classIdFromFile >= nextClassId) nextClassId = classIdFromFile +1;
-                const w = parseFloat(p[3]) * imageObject.originalWidth, h = parseFloat(p[4]) * imageObject.originalHeight;
-                const x = parseFloat(p[1]) * imageObject.originalWidth - w/2, y = parseFloat(p[2]) * imageObject.originalHeight - h/2;
-                imageObject.annotations.push({ x, y, width: w, height: h, label, classId: classIdFromFile });
-            });
-        }
-        function parseCocoJsonAnnotations(jsonContent) { /* ... As in previous version ... */ 
+        // MODIFIED parseCocoJsonAnnotations with more logging
+        function parseCocoJsonAnnotations(jsonContent) {
             try {
-                const coco = JSON.parse(jsonContent); classMap = {}; nextClassId = 0;
-                coco.categories?.forEach(cat => { classMap[cat.name] = cat.id; if(cat.id >= nextClassId) nextClassId = cat.id + 1; });
-                coco.images?.forEach(ci => {
-                    let imgObj = images.find(img => img.name === ci.file_name || img.id === ci.file_name);
-                    if(imgObj) {
-                        imgObj.originalWidth = ci.width || imgObj.originalWidth; imgObj.originalHeight = ci.height || imgObj.originalHeight;
-                        imgObj.annotations = [];
-                        coco.annotations?.filter(ann => ann.image_id === ci.id).forEach(ca => {
-                            const [x,y,w,h] = ca.bbox; let catName = "unknown";
-                            const cat = coco.categories.find(c => c.id === ca.category_id); if(cat) catName = cat.name;
-                            imgObj.annotations.push({x,y,width:w,height:h, label:catName, classId: ca.category_id});
-                        });
-                    }
-                });
-            } catch (e) { log(`❌ Error parsing COCO: ${e.message}`); console.error(e); }
+                const cocoData = JSON.parse(jsonContent);
+                log(`🔍 Parsing COCO JSON: File contains ${cocoData.images?.length || 0} image entries, ${cocoData.annotations?.length || 0} annotation entries, ${cocoData.categories?.length || 0} categories.`);
+                
+                let localCocoCategories = {}; // category_id from THIS coco file to its name
+                if (cocoData.categories && Array.isArray(cocoData.categories)) {
+                    cocoData.categories.forEach(category => {
+                        localCocoCategories[category.id] = category.name;
+                        // Update global classMap: if class name not present, add it. If present but different ID, log warning.
+                        if (!(category.name in classMap)) {
+                            classMap[category.name] = category.id; // Prefer COCO ID if it's the first time seeing this class name
+                            if (category.id >= nextClassId) nextClassId = category.id + 1;
+                        } else if (classMap[category.name] !== category.id) {
+                            log(`⚠️ Class "${category.name}" ID conflict: Global map has ID ${classMap[category.name]}, COCO JSON has ID ${category.id}. Using global map ID.`);
+                        }
+                    });
+                    log(`Updated global classMap. Total unique classes now: ${Object.keys(classMap).length}`);
+                } else {
+                    log("⚠️ COCO JSON has no 'categories' array. Annotation labels might be missing or use raw class IDs.");
+                }
+
+                let foundAndAnnotatedCount = 0;
+                let imagesInJsonCount = 0;
+                if (cocoData.images && Array.isArray(cocoData.images)) {
+                    imagesInJsonCount = cocoData.images.length;
+                    cocoData.images.forEach(cocoImageEntry => {
+                        let imageObject = images.find(img => img.name === cocoImageEntry.file_name);
+                        
+                        if (!imageObject) {
+                            // log(`   - Image "${cocoImageEntry.file_name}" (ID: ${cocoImageEntry.id}) from COCO JSON not found in currently loaded images. Skipping.`);
+                            return; 
+                        }
+
+                        if (cocoImageEntry.width && cocoImageEntry.height) {
+                            imageObject.originalWidth = cocoImageEntry.width;
+                            imageObject.originalHeight = cocoImageEntry.height;
+                        }
+                        
+                        imageObject.annotations = []; // Clear previous annotations for this image
+                        let annotationsForThisImageCount = 0;
+
+                        if (cocoData.annotations && Array.isArray(cocoData.annotations)) {
+                            cocoData.annotations
+                                .filter(ann => ann.image_id === cocoImageEntry.id)
+                                .forEach(cocoAnn => {
+                                    const [x, y, width, height] = cocoAnn.bbox;
+                                    let categoryName = `class_${cocoAnn.category_id}`; // Default
+                                    if (localCocoCategories[cocoAnn.category_id]) {
+                                        categoryName = localCocoCategories[cocoAnn.category_id];
+                                    } else { // Fallback to check global map if category not in this COCO's categories section
+                                        for (const nameInMap in classMap) {
+                                            if (classMap[nameInMap] === cocoAnn.category_id) { categoryName = nameInMap; break; }
+                                        }
+                                        if (categoryName === `class_${cocoAnn.category_id}`) { // Still not found by ID
+                                            log(`⚠️ Cat ID ${cocoAnn.category_id} for ann in "${cocoImageEntry.file_name}" not in COCO cats or global map. Using generic label.`);
+                                            if (!classMap[categoryName]) { classMap[categoryName] = cocoAnn.category_id; if (cocoAnn.category_id >= nextClassId) nextClassId = cocoAnn.category_id + 1;}
+                                        }
+                                    }
+                                    
+                                    imageObject.annotations.push({
+                                        x: x, y: y, width: width, height: height,
+                                        label: categoryName, classId: classMap[categoryName]
+                                    });
+                                    annotationsForThisImageCount++;
+                                });
+                        }
+                        if (annotationsForThisImageCount > 0) {
+                            foundAndAnnotatedCount++;
+                        }
+                    });
+                    log(`✅ COCO JSON: Matched and annotated ${foundAndAnnotatedCount} images out of ${imagesInJsonCount} listed in the JSON.`);
+                } else {
+                     log("⚠️ COCO JSON has no 'images' array. Cannot map annotations.");
+                }
+
+            } catch (error) {
+                log(`❌ Error parsing COCO JSON: ${error.message}`); console.error("COCO Parse Error:", error);
+            }
         }
-        function updateDatasetStats() { /* ... As in previous version ... */ 
-            const labeledImgCount = images.filter(i=>i.annotations?.length>0).length;
-            const totalBBoxes = images.reduce((s,i)=>s+(i.annotations?.length||0),0);
-            const currentClasses = new Set(Object.keys(classMap));
-            document.getElementById('totalImages').textContent=images.length;
-            document.getElementById('labeledImages').textContent=labeledImgCount;
-            document.getElementById('totalAnnotations').textContent=totalBBoxes;
-            document.getElementById('uniqueClasses').textContent=currentClasses.size;
-        }
-        function renderImageGrid() { /* ... As in previous version ... */ 
-            const grid = document.getElementById('imageGrid'); grid.innerHTML = '';
-            images.forEach((img,idx) => {
-                const item = document.createElement('div'); item.className = 'image-item';
-                let badge = img.annotations?.length > 0 ? `<span class="annotation-count-badge">${img.annotations.length}</span>` : '';
-                item.innerHTML = `<img src="${img.src}" alt="${img.name}" title="${img.name}">${badge}<div class="image-controls"><button class="btn" onclick="setCurrentImage(${idx})">Label/View</button><button class="btn" onclick="removeImage(${idx})">Remove</button></div>`;
-                grid.appendChild(item);
-            });
-        }
-        function removeImage(index) { /* ... As in previous version ... */ }
-        const canvas = document.getElementById('labelingCanvas'), ctx = canvas.getContext('2d');
-        let isDrawing = false, startX, startY, currentImgElement = null;
-        canvas.addEventListener('mousedown', handleCanvasMouseDown); canvas.addEventListener('mousemove', handleCanvasMouseMove); canvas.addEventListener('mouseup', handleCanvasMouseUp);
-        function setCurrentImage(index) { /* ... As in previous version ... */ if(index >=0 && index < images.length){currentImageIndex=index; switchTab(null,'labeling'); loadImageForLabeling();} else if (images.length===0){currentImageIndex=0;switchTab(null,'labeling');loadImageForLabeling();}}
-        function loadImageForLabeling() { /* ... As in previous version, ensure responsive canvas size ... */ 
-            if (images.length === 0 || !images[currentImageIndex]) { ctx.clearRect(0,0,canvas.width,canvas.height); ctx.fillText("No image.",10,20); currentImgElement=null; return; }
-            const imgData = images[currentImageIndex]; currentImgElement = new Image();
-            currentImgElement.onload = () => {
-                const cc = canvas.parentElement; const maxW = cc.clientWidth - 10, maxH = 500;
-                let w = currentImgElement.naturalWidth, h = currentImgElement.naturalHeight, r = w/h;
-                if (w > maxW) { w = maxW; h = w/r; } if (h > maxH) { h = maxH; w = h*r; }
-                canvas.width = w; canvas.height = h; redrawCanvas();
-            }; currentImgElement.src = imgData.src;
-        }
-        function redrawCanvas() { /* ... As in previous version ... */ 
-            if(!canvas || !ctx) return; ctx.clearRect(0,0,canvas.width,canvas.height); if(!currentImgElement || !currentImgElement.complete || currentImgElement.naturalWidth === 0) return;
-            ctx.drawImage(currentImgElement,0,0,canvas.width,canvas.height); const imgData = images[currentImageIndex];
-            if(imgData?.annotations && imgData.originalWidth){ const scX = canvas.width/imgData.originalWidth, scY = canvas.height/imgData.originalHeight; imgData.annotations.forEach(a => drawBoundingBox(a.x*scX, a.y*scY, a.width*scX, a.height*scY, a.label));}
-        }
-        function handleCanvasMouseDown(e) { /* ... As in previous version ... */ if(!currentImgElement) return; isDrawing=true; const r=canvas.getBoundingClientRect();startX=e.clientX-r.left;startY=e.clientY-r.top;}
-        function handleCanvasMouseMove(e) { /* ... As in previous version ... */ if(!isDrawing||!currentImgElement)return; const r=canvas.getBoundingClientRect(),cX=e.clientX-r.left,cY=e.clientY-r.top; redrawCanvas(); drawBoundingBox(startX,startY,cX-startX,cY-startY,'Drawing...');}
-        function handleCanvasMouseUp(e) { /* ... As in previous version ... */
-            if(!isDrawing||!currentImgElement)return; isDrawing=false; const r=canvas.getBoundingClientRect(),eX=e.clientX-r.left,eY=e.clientY-r.top;
-            const cW=eX-startX,cH=eY-startY; if(Math.abs(cW)<5||Math.abs(cH)<5){redrawCanvas();return;}
-            const l=prompt('Label:'); if(l&&l.trim()!==""){const iD=images[currentImageIndex]; if(!iD.originalWidth){redrawCanvas();return;} const sX=iD.originalWidth/canvas.width,sY=iD.originalHeight/canvas.height; const oX=Math.min(startX,eX)*sX,oY=Math.min(startY,eY)*sY,oW=Math.abs(cW)*sX,oH=Math.abs(cH)*sY; const newAnn={x:oX,y:oY,width:oW,height:oH,label:l.trim()}; iD.annotations.push(newAnn); if(!(l.trim() in classMap)) classMap[l.trim()]=nextClassId++; newAnn.classId=classMap[l.trim()]; updateDatasetStats(); redrawCanvas();} else redrawCanvas();
-        }
-        function drawBoundingBox(x,y,w,h,l){/* ... As in previous version ... */ ctx.strokeStyle='#667eea';ctx.lineWidth=2;ctx.strokeRect(x,y,w,h);ctx.fillStyle='#667eea';ctx.globalAlpha=0.7;const tM=ctx.measureText(l),tW=Math.max(30,tM.width+10),tH=20;ctx.fillRect(x,y-tH,tW,tH);ctx.globalAlpha=1.0;ctx.fillStyle='#fff';ctx.font='14px Segoe UI';ctx.textBaseline='middle';ctx.fillText(l,x+5,y-(tH/2));}
+        function updateDatasetStats(){const lIC=images.filter(i=>i.annotations?.length>0).length,tB=images.reduce((s,i)=>s+(i.annotations?.length||0),0),uC=new Set(Object.keys(classMap));document.getElementById('totalImages').textContent=images.length;document.getElementById('labeledImages').textContent=lIC;document.getElementById('totalAnnotations').textContent=tB;document.getElementById('uniqueClasses').textContent=uC.size;}
+        function renderImageGrid(){const g=document.getElementById('imageGrid');g.innerHTML='';images.forEach((i,idx)=>{const it=document.createElement('div');it.className='image-item';let b=i.annotations?.length>0?`<span class="annotation-count-badge">${i.annotations.length}</span>`:'';it.innerHTML=`<img src="${i.src}" alt="${i.name}" title="${i.name}">${b}<div class="image-controls"><button class="btn" onclick="setCurrentImage(${idx})">Label/View</button><button class="btn" onclick="removeImage(${idx})">Remove</button></div>`;g.appendChild(it);});}
+        function removeImage(idx){if(idx>=0&&idx<images.length){log(`Removed ${images[idx].name}`);images.splice(idx,1);updateDatasetStats();renderImageGrid();if(currentImageIndex>=images.length&&images.length>0)currentImageIndex=images.length-1;if(images.length===0){currentImageIndex=0;loadImageForLabeling();}else if(idx===currentImageIndex||currentImageIndex>=images.length)loadImageForLabeling();}}
+        const canvas=document.getElementById('labelingCanvas'),ctx=canvas.getContext('2d');let isDrawing=!1,startX,startY,currentImgElement=null;canvas.addEventListener('mousedown',handleCanvasMouseDown);canvas.addEventListener('mousemove',handleCanvasMouseMove);canvas.addEventListener('mouseup',handleCanvasMouseUp);
+        function setCurrentImage(idx){if(idx>=0&&idx<images.length){currentImageIndex=idx;switchTab(null,'labeling');loadImageForLabeling();}else if(images.length===0){currentImageIndex=0;switchTab(null,'labeling');loadImageForLabeling();}}
+        function loadImageForLabeling(){if(images.length===0||!images[currentImageIndex]){ctx.clearRect(0,0,canvas.width,canvas.height);ctx.textAlign='center';ctx.fillText("No image.",canvas.width/2,canvas.height/2);currentImgElement=null;return;} const iD=images[currentImageIndex];if(!iD||!iD.src){log(`Err: imgData missing at index ${currentImageIndex}`);return;} currentImgElement=new Image();currentImgElement.onload=()=>{const p=canvas.parentElement,mW=p.clientWidth-20,mH=500;let w=currentImgElement.naturalWidth,h=currentImgElement.naturalHeight,r=w/h;if(w>mW){w=mW;h=w/r;}if(h>mH){h=mH;w=h*r;}canvas.width=w;canvas.height=h;redrawCanvas();};currentImgElement.onerror=()=>{log(`Error loading image for labeling: ${iD.name}`);ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillText(`Error loading: ${iD.name}`,10,50);currentImgElement=null;};currentImgElement.src=iD.src;}
+        function redrawCanvas(){if(!canvas||!ctx)return;ctx.clearRect(0,0,canvas.width,canvas.height);if(!currentImgElement||!currentImgElement.complete||currentImgElement.naturalWidth===0)return;ctx.drawImage(currentImgElement,0,0,canvas.width,canvas.height);const iD=images[currentImageIndex];if(iD?.annotations&&iD.originalWidth){const sX=canvas.width/iD.originalWidth,sY=canvas.height/iD.originalHeight;iD.annotations.forEach(a=>drawBoundingBox(a.x*sX,a.y*sY,a.width*sX,a.height*sY,a.label));}}
+        function handleCanvasMouseDown(e){if(!currentImgElement)return;isDrawing=!0;const r=canvas.getBoundingClientRect();startX=e.clientX-r.left;startY=e.clientY-r.top;}
+        function handleCanvasMouseMove(e){if(!isDrawing||!currentImgElement)return;const r=canvas.getBoundingClientRect(),cX=e.clientX-r.left,cY=e.clientY-r.top;redrawCanvas();drawBoundingBox(startX,startY,cX-startX,cY-startY,'Drawing...');}
+        function handleCanvasMouseUp(e){if(!isDrawing||!currentImgElement)return;isDrawing=!1;const r=canvas.getBoundingClientRect(),eX=e.clientX-r.left,eY=e.clientY-r.top;const cW=eX-startX,cH=eY-startY;if(Math.abs(cW)<5||Math.abs(cH)<5){redrawCanvas();return;} const l=prompt('Label:');if(l&&l.trim()!==""){const iD=images[currentImageIndex];if(!iD.originalWidth){redrawCanvas();return;}const sX=iD.originalWidth/canvas.width,sY=iD.originalHeight/canvas.height;const oX=Math.min(startX,eX)*sX,oY=Math.min(startY,eY)*sY,oW=Math.abs(cW)*sX,oH=Math.abs(cH)*sY;const nA={x:oX,y:oY,width:oW,height:oH,label:l.trim()};iD.annotations.push(nA);const tL=l.trim();if(!(tL in classMap))classMap[tL]=nextClassId++;nA.classId=classMap[tL];updateDatasetStats();redrawCanvas();}else redrawCanvas();}
+        function drawBoundingBox(x,y,w,h,l){ctx.strokeStyle='#667eea';ctx.lineWidth=2;ctx.strokeRect(x,y,w,h);ctx.fillStyle='#667eea';ctx.globalAlpha=0.7;const tM=ctx.measureText(l),tW=Math.max(30,tM.width+10),tH=20;ctx.fillRect(x,y-tH,tW,tH);ctx.globalAlpha=1.0;ctx.fillStyle='#fff';ctx.font='14px Segoe UI';ctx.textBaseline='middle';ctx.fillText(l,x+5,y-(tH/2));}
         function nextImage(){if(images.length===0)return;currentImageIndex=(currentImageIndex+1)%images.length;loadImageForLabeling();}
         function prevImage(){if(images.length===0)return;currentImageIndex=(currentImageIndex-1+images.length)%images.length;loadImageForLabeling();}
         function clearAnnotations(){if(images.length>0&&images[currentImageIndex]?.annotations){images[currentImageIndex].annotations=[];redrawCanvas();updateDatasetStats();log(`Annotations cleared for ${images[currentImageIndex].name}`);}}
-
-        // --- NEW: Training System ---
-        function updateTrainingUI() {
-            const modelType = document.getElementById('modelType').value;
-            const batchSizeConfig = document.getElementById('batchSizeConfig');
-            const accuracyLabel = document.getElementById('accuracyLabel');
-            const lossBreakdownDisplay = document.getElementById('lossBreakdownDisplay');
-
-            if (modelType === 'detection') {
-                batchSizeConfig.style.display = 'block';
-                accuracyLabel.textContent = 'mAP (Simulated)'; // Or a real metric if implemented
-                lossBreakdownDisplay.style.display = 'block';
-            } else { // Classification
-                batchSizeConfig.style.display = 'none';
-                accuracyLabel.textContent = 'Accuracy';
-                lossBreakdownDisplay.style.display = 'none';
-            }
-        }
-        
-        // Call it once on load to set initial UI state
-        document.addEventListener('DOMContentLoaded', updateTrainingUI);
-
+        function updateTrainingUI(){const mT=document.getElementById('modelType').value,bsC=document.getElementById('batchSizeConfig'),acL=document.getElementById('accuracyLabel'),lBD=document.getElementById('lossBreakdownDisplay');if(mT==='detection'){bsC.style.display='block';acL.textContent='Avg Loss';lBD.style.display='block';}else{bsC.style.display='none';acL.textContent='Accuracy';lBD.style.display='none';}}
+        document.addEventListener('DOMContentLoaded',updateTrainingUI);
 
         async function startTraining() {
             if (images.length === 0) { alert('Please upload dataset!'); return; }
@@ -379,358 +296,77 @@
             const modelType = document.getElementById('modelType').value;
             const epochs = parseInt(document.getElementById('epochs').value);
             const learningRate = parseFloat(document.getElementById('learningRate').value);
-            const batchSize = modelType === 'detection' ? parseInt(document.getElementById('batchSize').value) : null;
+            const batchSize = modelType === 'detection' ? parseInt(document.getElementById('batchSize').value) : 8;
 
-
-            // Rebuild classMap based on all current annotations to ensure it's up-to-date
             classMap = {}; nextClassId = 0;
             const uniqueLabelSet = new Set();
-            imagesWithAnn.forEach(img => img.annotations.forEach(ann => uniqueLabelSet.add(ann.label)));
-            Array.from(uniqueLabelSet).sort().forEach(label => { // Sort for consistent ID assignment
-                if (!(label in classMap)) classMap[label] = nextClassId++;
-            });
-            const numClasses = Object.keys(classMap).length;
+            imagesWithAnn.forEach(img => img.annotations.forEach(ann => {
+                const labelStr = String(ann.label).trim();
+                if (labelStr) uniqueLabelSet.add(labelStr);
+            }));
+            Array.from(uniqueLabelSet).sort().forEach(label => { if (!(label in classMap)) classMap[label] = nextClassId++; });
+            
+            const numActualClasses = Object.keys(classMap).length;
+            log(`Model Type: ${modelType}, Epochs: ${epochs}, LR: ${learningRate}, Batch: ${batchSize}`);
+            log(`Training with ${imagesWithAnn.length} annotated images and ${numActualClasses} unique classes found.`);
 
-            log(`Model Type: ${modelType}, Epochs: ${epochs}, LR: ${learningRate}${batchSize ? ', Batch: '+batchSize : ''}`);
-            log(`Training with ${imagesWithAnn.length} annotated images and ${numClasses} unique classes.`);
+            let modelOutputDimensionForClasses = numActualClasses;
+            if (numActualClasses === 0 && (modelType === 'classification' || modelType === 'detection')) {
+                 alert("No valid classes found in annotations. Cannot start training.");
+                 stopTraining(); return;
+            }
+            if (numActualClasses === 1 && (modelType === 'classification' || modelType === 'detection')) {
+                log("⚠️ Only 1 unique class. Setting model output dimension for classes to 2 for compatibility.");
+                modelOutputDimensionForClasses = 2; 
+            }
+            log(`Effective model output dimension for classes: ${modelOutputDimensionForClasses}`);
             log(`Class Map: ${JSON.stringify(classMap)}`);
 
-            if (numClasses === 0) {
-                alert("No classes found in annotations. Cannot start training.");
-                stopTraining(); return;
-            }
-
             try {
-                tf.dispose(model); // Dispose any previous model
-                model = null;
-
+                tf.dispose(model); model = null;
                 if (modelType === 'classification') {
-                    document.getElementById('accuracyLabel').textContent = 'Accuracy';
-                    document.getElementById('lossBreakdownDisplay').style.display = 'none';
-                    await trainClassificationModel(epochs, learningRate, imagesWithAnn, numClasses);
-                } else { // Object Detection
-                    document.getElementById('accuracyLabel').textContent = 'Avg Loss'; // More realistic than sim mAP for now
-                     document.getElementById('lossBreakdownDisplay').style.display = 'block';
-                    await trainSimpleDetectionModel(epochs, learningRate, batchSize, imagesWithAnn, numClasses);
+                    await trainClassificationModel(epochs, learningRate, batchSize, imagesWithAnn, modelOutputDimensionForClasses);
+                } else { 
+                    await trainSimpleDetectionModel(epochs, learningRate, batchSize, imagesWithAnn, modelOutputDimensionForClasses);
                 }
             } catch (error) {
                 log(`❌ Training Error: ${error.message}`); console.error("Training error details:", error);
             } finally {
-                isTraining = false; // Ensure training flag is reset
+                isTraining = false; 
                 document.getElementById('trainBtn').disabled = false;
                 document.getElementById('stopBtn').disabled = true;
-                log(isTraining ? '⚠️ Training loop exited unexpectedly.' : '🏁 Training session ended.');
+                log(model && model.stopTraining ? '⏹️ Training stopped by user.' : '🏁 Training session ended.');
             }
-        }
-
-        // Classification Model (largely same as your v3, with minor cleanups)
-        async function trainClassificationModel(epochs, learningRate, trainingImages, numOutputClasses) { /* ... As in previous version ... */
-            log('🔧 Building classification model...');
-            model = tf.sequential(); /* ... model definition ... */
-            model.add(tf.layers.conv2d({inputShape: [IMG_HEIGHT, IMG_WIDTH, 3], filters: 16, kernelSize: 3, activation: 'relu', padding: 'same'}));
-            model.add(tf.layers.maxPooling2d({poolSize: 2}));
-            model.add(tf.layers.conv2d({filters: 32, kernelSize: 3, activation: 'relu', padding: 'same'}));
-            model.add(tf.layers.maxPooling2d({poolSize: 2}));
-            model.add(tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'relu', padding: 'same'}));
-            model.add(tf.layers.maxPooling2d({poolSize: 2}));
-            model.add(tf.layers.flatten());
-            model.add(tf.layers.dense({units: 128, activation: 'relu'}));
-            model.add(tf.layers.dropout({rate: 0.3}));
-            model.add(tf.layers.dense({units: numOutputClasses, activation: 'softmax'}));
-
-            model.compile({optimizer: tf.train.adam(learningRate), loss: 'categoricalCrossentropy', metrics: ['accuracy']});
-            log('📊 Preparing classification data...');
-            const {xs, ys} = await prepareClassificationData(trainingImages, numOutputClasses);
-            if (!xs || !ys) { log("Failed to prepare classification data."); return; }
-            log(`Data shapes: xs=${xs.shape}, ys=${ys.shape}`);
-            log('🎯 Starting classification training loop...');
-            try {
-                await model.fit(xs, ys, {
-                    epochs: epochs, batchSize: 8, shuffle: true, // Added batchSize
-                    callbacks: {
-                        onEpochBegin: async (ep) => { document.getElementById('currentEpoch').textContent = ep + 1; await tf.nextFrame(); },
-                        onEpochEnd: (ep, logs) => {
-                            if (!isTraining) model.stopTraining = true;
-                            const prog = ((ep + 1) / epochs) * 100;
-                            document.getElementById('trainingProgress').style.width = prog + '%';
-                            document.getElementById('trainingLoss').textContent = logs.loss.toFixed(4);
-                            document.getElementById('accuracy').textContent = (logs.acc * 100).toFixed(2) + '%';
-                            log(`Ep ${ep+1}/${epochs} - Loss: ${logs.loss.toFixed(4)}, Acc: ${(logs.acc*100).toFixed(2)}%`);
-                        }
-                    }
-                });
-            } finally { tf.dispose([xs, ys]); } // Dispose tensors
-            if(isTraining) log('✅ Classification training completed!');
-        }
-
-        async function prepareClassificationData(trainingImages, numOutputClasses) {
-            const tensors = await Promise.all(trainingImages.map(async imgData => {
-                if (!imgData.annotations || imgData.annotations.length === 0) return null;
-                const imageElement = new Image(); imageElement.src = imgData.src;
-                await new Promise(r => imageElement.onload = r);
-                return tf.tidy(() => {
-                    const imageTensor = tf.browser.fromPixels(imageElement).resizeNearestNeighbor([IMG_HEIGHT, IMG_WIDTH]).toFloat().div(255.0);
-                    const label = imgData.annotations[0].label; // Use first annotation's label
-                    const classId = classMap[label];
-                    const labelTensor = tf.oneHot(tf.tensor1d([classId], 'int32'), numOutputClasses).squeeze();
-                    return { imageTensor, labelTensor };
-                });
-            }));
-
-            const validTensors = tensors.filter(t => t !== null);
-            if (validTensors.length === 0) return {};
-            const xs = tf.stack(validTensors.map(t => t.imageTensor));
-            const ys = tf.stack(validTensors.map(t => t.labelTensor));
-            validTensors.forEach(t => { t.imageTensor.dispose(); t.labelTensor.dispose(); }); // Dispose intermediate
-            return { xs, ys };
-        }
-
-
-        // --- NEW: Simplified Object Detection Model and Training ---
-        function createObjectDetectionModel(numClasses) {
-            const input = tf.input({shape: [IMG_HEIGHT, IMG_WIDTH, 3]});
-            
-            // Simple CNN Backbone
-            let x = tf.layers.conv2d({filters: 16, kernelSize: 3, activation: 'relu', padding: 'same'}).apply(input);
-            x = tf.layers.maxPooling2d({poolSize: 2}).apply(x); // 112x112
-            x = tf.layers.conv2d({filters: 32, kernelSize: 3, activation: 'relu', padding: 'same'}).apply(x);
-            x = tf.layers.maxPooling2d({poolSize: 2}).apply(x); // 56x56
-            x = tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'relu', padding: 'same'}).apply(x);
-            x = tf.layers.maxPooling2d({poolSize: 2}).apply(x); // 28x28
-            x = tf.layers.flatten().apply(x);
-            x = tf.layers.dense({units: 128, activation: 'relu'}).apply(x);
-            x = tf.layers.dropout({rate: 0.2}).apply(x);
-
-            // Output Heads
-            const bboxOutput = tf.layers.dense({units: 4, activation: 'sigmoid', name: 'bbox_output'}).apply(x); // 4 for normalized (x,y,w,h) between 0-1
-            const classOutput = tf.layers.dense({units: numClasses, activation: 'softmax', name: 'class_output'}).apply(x);
-            
-            const detModel = tf.model({inputs: input, outputs: [bboxOutput, classOutput]});
-            return detModel;
-        }
-
-        function detectionLossFunction(yTrue, yPred) {
-            return tf.tidy(() => {
-                const trueBoxes = yTrue.slice([0, 0], [-1, 4]); // First 4 are boxes
-                const trueClasses = yTrue.slice([0, 4], [-1, -1]); // Rest are classes
-                
-                const predBoxes = yPred[0]; // Model output for boxes
-                const predClasses = yPred[1]; // Model output for classes
-
-                const locLoss = tf.losses.meanSquaredError(trueBoxes, predBoxes);
-                const classLoss = tf.losses.categoricalCrossentropy(trueClasses, predClasses);
-                
-                // You might want to weigh these losses, e.g., tf.add(locLoss.mul(alpha), classLoss)
-                const totalLoss = tf.add(locLoss, classLoss); 
-                return totalLoss; // Return mean loss over the batch
-            });
         }
         
-        // Store individual losses for display
-        let currentLocLoss = 0;
-        let currentClassLoss = 0;
-
-        async function trainSimpleDetectionModel(epochs, learningRate, batchSize, trainingImages, numClasses) {
-            log('🔧 Building Simple Object Detection model...');
-            model = createObjectDetectionModel(numClasses);
-            
-            // Custom optimizer instance to potentially use things like clipnorm if needed
-            const optimizer = tf.train.adam(learningRate); 
-
-            // We need a custom training loop for multiple outputs and custom loss handling in TFJS effectively for logging
-            log('📊 Preparing all detection data (can take a moment for many images)...');
-            const {allXs, allYs} = await prepareDetectionData(trainingImages, numClasses);
-
-            if (!allXs || allXs.shape[0] === 0) {
-                log("❌ No valid data prepared for detection training.");
-                tf.dispose([allXs, allYs]);
-                return;
-            }
-            log(`Prepared detection data: Xs shape: ${allXs.shape}, Ys shape: ${allYs.shape}`);
-
-
-            log('🎯 Starting Detection training loop...');
-            for (let epoch = 0; epoch < epochs; epoch++) {
-                if (!isTraining) { log("Training stopped by user."); break; }
-                document.getElementById('currentEpoch').textContent = epoch + 1;
-                let epochTotalLoss = 0;
-                let epochLocLoss = 0;
-                let epochClassLoss = 0;
-                let numBatches = 0;
-
-                // Shuffle data indices for each epoch
-                const numSamples = allXs.shape[0];
-                const shuffledIndices = tf.util.createShuffledIndices(numSamples);
-                
-                for (let i = 0; i < numSamples; i += batchSize) {
-                    if (!isTraining) break;
-                    const batchIndices = Array.from(shuffledIndices.slice(i, Math.min(i + batchSize, numSamples)));
-                    
-                    const xsBatch = tf.gather(allXs, tf.tensor1d(batchIndices, 'int32'));
-                    const ysBatchTrueBoxes = tf.gather(allYs.trueBoxes, tf.tensor1d(batchIndices, 'int32'));
-                    const ysBatchTrueClasses = tf.gather(allYs.trueClasses, tf.tensor1d(batchIndices, 'int32'));
-
-                    const { grads, lossValues } = optimizer.minimize(() => {
-                        const predYs = model.predict(xsBatch); // predYs will be [predBoxesTensor, predClassesTensor]
-                        const predBoxes = predYs[0];
-                        const predClasses = predYs[1];
-
-                        // Calculate individual losses for logging and then the combined loss for optimization
-                        const locLoss = tf.losses.meanSquaredError(ysBatchTrueBoxes, predBoxes).mean();
-                        const classLoss = tf.losses.categoricalCrossentropy(ysBatchTrueClasses, predClasses).mean();
-                        
-                        currentLocLoss = locLoss.dataSync()[0]; // For UI update
-                        currentClassLoss = classLoss.dataSync()[0]; // For UI update
-                        
-                        // Combined loss for gradient calculation
-                        const totalLoss = tf.add(locLoss.mul(0.5), classLoss.mul(0.5)); // Example: equal weight
-                        return totalLoss;
-                    }, true, model.trainableWeights); // true for returnCost, then varList
-
-                    // Dispose gradients and batch tensors
-                    Object.values(grads).forEach(grad => grad.dispose());
-                    tf.dispose([xsBatch, ysBatchTrueBoxes, ysBatchTrueClasses]);
-                    // Note: predYs tensors from model.predict are disposed automatically by TFJS if not returned from tidy/kept
-
-                    const batchTotalLoss = (currentLocLoss + currentClassLoss) / 2; // Reflects the weighted sum if weights change
-                    epochTotalLoss += batchTotalLoss;
-                    epochLocLoss += currentLocLoss;
-                    epochClassLoss += currentClassLoss;
-                    numBatches++;
-                    
-                    await tf.nextFrame(); // Yield to UI
-                }
-                shuffledIndices.dispose(); // Dispose shuffled indices tensor
-
-                if (numBatches > 0) {
-                    const avgEpochLoss = epochTotalLoss / numBatches;
-                    const avgEpochLocLoss = epochLocLoss / numBatches;
-                    const avgEpochClassLoss = epochClassLoss / numBatches;
-
-                    document.getElementById('trainingLoss').textContent = avgEpochLoss.toFixed(4);
-                    document.getElementById('locLossDisplay').textContent = `Loc: ${avgEpochLocLoss.toFixed(4)}`;
-                    document.getElementById('classLossDisplay').textContent = `Class: ${avgEpochClassLoss.toFixed(4)}`;
-                    // For "Accuracy" in detection, we'd typically use mAP, which is complex to calculate here.
-                    // Using average loss as a proxy for now.
-                    document.getElementById('accuracy').textContent = avgEpochLoss.toFixed(4); 
-                    log(`Ep ${epoch+1}/${epochs} - AvgLoss: ${avgEpochLoss.toFixed(4)} (Loc: ${avgEpochLocLoss.toFixed(4)}, Class: ${avgEpochClassLoss.toFixed(4)})`);
-                }
-                const progress = ((epoch + 1) / epochs) * 100;
-                document.getElementById('trainingProgress').style.width = progress + '%';
-                if (!isTraining) break;
-            }
-            
-            tf.dispose([allXs, allYs.trueBoxes, allYs.trueClasses]); // Dispose dataset tensors
-            if(isTraining) log('✅ Simple Detection training completed!');
-        }
-
-        async function prepareDetectionData(trainingImages, numClasses) {
-            const imageTensors = [];
-            const targetBoxes = [];
-            const targetClasses = [];
-            let count = 0;
-
-            for (const imgData of trainingImages) {
-                if (!imgData.annotations || imgData.annotations.length === 0) continue;
-                
-                // Load image only once
-                const imageElement = new Image();
-                imageElement.src = imgData.src;
-                await new Promise(r => imageElement.onload = r);
-                
-                const originalImageTensor = tf.tidy(()=>tf.browser.fromPixels(imageElement).toFloat().div(255.0));
-                const resizedImageTensor = tf.image.resizeNearestNeighbor(originalImageTensor, [IMG_HEIGHT, IMG_WIDTH]);
-                originalImageTensor.dispose(); // Dispose original full-size tensor
-
-                for (const ann of imgData.annotations) {
-                    imageTensors.push(resizedImageTensor.clone()); // Clone for each annotation
-
-                    // Normalize box: x, y, width, height (relative to original image dimensions)
-                    const normX = ann.x / imgData.originalWidth;
-                    const normY = ann.y / imgData.originalHeight;
-                    const normW = ann.width / imgData.originalWidth;
-                    const normH = ann.height / imgData.originalHeight;
-                    targetBoxes.push(tf.tensor1d([normX, normY, normW, normH]));
-
-                    const classId = classMap[ann.label];
-                    targetClasses.push(tf.oneHot(tf.tensor1d([classId], 'int32'), numClasses).squeeze());
-                    count++;
-                }
-                resizedImageTensor.dispose(); // Dispose after all its annotations processed
-            }
-            
-            if (imageTensors.length === 0) return {};
-
-            log(`Processed ${count} annotations for detection training.`);
-            const allXs = tf.stack(imageTensors);
-            const allYs = {
-                trueBoxes: tf.stack(targetBoxes),
-                trueClasses: tf.stack(targetClasses)
-            };
-            
-            imageTensors.forEach(t => t.dispose());
-            targetBoxes.forEach(t => t.dispose());
-            targetClasses.forEach(t => t.dispose());
-            
-            return {allXs, allYs};
-        }
-
-
-        function stopTraining() { /* ... As in previous version ... */ 
-            isTraining = false;
-            if (model && typeof model.stopTraining === 'boolean') { model.stopTraining = true; }
-            log('⏹️ Training stop requested.');
-            document.getElementById('trainBtn').disabled = false;
-            document.getElementById('stopBtn').disabled = true;
-        }
-
-        function log(message) { /* ... As in previous version ... */ 
-            const logDiv=document.getElementById('trainingLog');
-            const ts=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
-            const p=document.createElement('p');p.textContent=`[${ts}] ${message}`;
-            logDiv.appendChild(p);logDiv.scrollTop=logDiv.scrollHeight;
-        }
-
-        // Export Functions
-        async function exportModel(format) { /* ... As in previous version, ensure async data for weights ... */
-            if(!model){alert('No model trained!');return;} const status=document.getElementById('exportStatus');status.innerHTML='Processing...';
-            try{
-                if(format==='tensorflow'){await model.save('downloads://local-ml-detection-model');status.innerHTML='✅ TF.js Model Exported!';}
-                else if(format==='weights'){
-                    const w=model.getWeights(); const wd = []; for(const t of w){wd.push(Array.from(await t.data())); t.dispose();}
-                    downloadBlob(new Blob([JSON.stringify(wd,null,2)],{type:'application/json'}),'detection-model-weights.json'); status.innerHTML='✅ Weights Exported!';
-                } else { status.innerHTML='🚧 ONNX Placeholder.';}
-            }catch(e){status.innerHTML=`❌ Export Failed: ${e.message}`;log(e.message);console.error(e);}
-        }
-        function exportDataset() { /* ... As in previous version ... */ }
-        function downloadBlob(blob, filename) {const u=URL.createObjectURL(blob),a=document.createElement('a');a.style.display='none';a.href=u;a.download=filename;document.body.appendChild(a);a.click();URL.revokeObjectURL(u);a.remove();}
-        
-        // Tab Management and Initialization
-        function switchTab(event, tabName) { /* ... As in previous version ... */ 
-             document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
-             document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-             document.getElementById(tabName).classList.add('active');
-             const targetTabButton = event ? event.target : document.querySelector(`.tab[onclick*="'${tabName}'"]`);
-             if(targetTabButton) targetTabButton.classList.add('active');
-             if(tabName==='labeling') loadImageForLabeling();
-             updateTrainingUI(); // Update UI elements like batch size visibility
-        }
-        document.addEventListener('DOMContentLoaded', () => { /* ... Load from localStorage, update stats ... */ 
-            log('🎉 Platform Ready!'); updateTrainingUI();
-            try { /* Load localStorage */ } catch(e) { /* handle */ }
-            updateDatasetStats(); renderImageGrid(); if(images.length>0) loadImageForLabeling();
-        });
-        setInterval(() => { /* ... Autosave ... */ }, 15000);
-        ['dragenter','dragover','dragleave','drop'].forEach(ev=>document.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();}));
-        document.addEventListener('keydown', e => { /* ... Keyboard shortcuts ... */ 
-            const activeTab = document.querySelector('.tab-content.active');
-            if (activeTab && activeTab.id === 'labeling') {
-                if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
-                if (e.key === 'ArrowRight') { e.preventDefault(); nextImage(); }
-                else if (e.key === 'ArrowLeft') { e.preventDefault(); prevImage(); }
-            }
-        });
-
+        async function trainClassificationModel(epochs,learningRate,batchSize,trainingImages,numModelOutputClasses){log('🔧 Building classification model...');model=tf.sequential();model.add(tf.layers.conv2d({inputShape:[IMG_HEIGHT,IMG_WIDTH,3],filters:16,kernelSize:3,activation:'relu',padding:'same'}));model.add(tf.layers.maxPooling2d({poolSize:2}));model.add(tf.layers.conv2d({filters:32,kernelSize:3,activation:'relu',padding:'same'}));model.add(tf.layers.maxPooling2d({poolSize:2}));model.add(tf.layers.conv2d({filters:64,kernelSize:3,activation:'relu',padding:'same'}));model.add(tf.layers.maxPooling2d({poolSize:2}));model.add(tf.layers.flatten());model.add(tf.layers.dense({units:128,activation:'relu'}));model.add(tf.layers.dropout({rate:0.3}));model.add(tf.layers.dense({units:numModelOutputClasses,activation:'softmax'}));model.compile({optimizer:tf.train.adam(learningRate),loss:'categoricalCrossentropy',metrics:['accuracy']});log('📊 Preparing classification data...');const{xs,ys}=await prepareClassificationData(trainingImages,numModelOutputClasses);if(!xs||!ys){log("Failed to prepare classification data.");return;}
+        log(`Data shapes: xs=${xs.shape}, ys=${ys.shape}`);log('🎯 Starting classification training loop...');try{await model.fit(xs,ys,{epochs:epochs,batchSize:batchSize,shuffle:!0,callbacks:{onEpochBegin:async ep=>{document.getElementById('currentEpoch').textContent=ep+1;await tf.nextFrame();},onEpochEnd:(ep,logs)=>{if(!isTraining)model.stopTraining=!0;const p=((ep+1)/epochs)*100;document.getElementById('trainingProgress').style.width=p+'%';document.getElementById('trainingLoss').textContent=logs.loss.toFixed(4);document.getElementById('accuracy').textContent=(logs.acc*100).toFixed(2)+'%';log(`Ep ${ep+1}/${epochs} - Loss: ${logs.loss.toFixed(4)}, Acc: ${(logs.acc*100).toFixed(2)}%`);}}});}finally{tf.dispose([xs,ys]);}if(isTraining&&!(model&&model.stopTraining))log('✅ Classification training completed!');}
+        async function prepareClassificationData(trainingImages,numModelOutputClasses){const ts=await Promise.all(trainingImages.map(async iD=>{if(!iD.annotations||iD.annotations.length===0)return null;const iE=new Image();iE.src=iD.src;await new Promise(r=>iE.onload=r);return tf.tidy(()=>{const iT=tf.browser.fromPixels(iE).resizeNearestNeighbor([IMG_HEIGHT,IMG_WIDTH]).toFloat().div(255.0);const l=iD.annotations[0].label,cId=classMap[l];if(cId===undefined){console.warn(`Label "${l}" not in classMap for ${iD.name}. Skipping.`);iT.dispose();return null;}
+        const lT=tf.oneHot(tf.tensor1d([cId],'int32'),numModelOutputClasses).squeeze();return{imageTensor:iT,labelTensor:lT};});}));const vT=ts.filter(t=>t!==null);if(vT.length===0)return{};const xs=tf.stack(vT.map(t=>t.imageTensor)),ys=tf.stack(vT.map(t=>t.labelTensor));vT.forEach(t=>{if(t){t.imageTensor.dispose();t.labelTensor.dispose();}});return{xs,ys};}
+        function createObjectDetectionModel(numModelOutputClasses){const i=tf.input({shape:[IMG_HEIGHT,IMG_WIDTH,3]});let x=tf.layers.conv2d({filters:16,kernelSize:3,activation:'relu',padding:'same'}).apply(i);x=tf.layers.maxPooling2d({poolSize:2}).apply(x);x=tf.layers.conv2d({filters:32,kernelSize:3,activation:'relu',padding:'same'}).apply(x);x=tf.layers.maxPooling2d({poolSize:2}).apply(x);x=tf.layers.conv2d({filters:64,kernelSize:3,activation:'relu',padding:'same'}).apply(x);x=tf.layers.maxPooling2d({poolSize:2}).apply(x);x=tf.layers.flatten().apply(x);x=tf.layers.dense({units:128,activation:'relu'}).apply(x);x=tf.layers.dropout({rate:0.2}).apply(x);
+        const bO=tf.layers.dense({units:4,activation:'sigmoid',name:'bbox_output'}).apply(x);const cO=tf.layers.dense({units:numModelOutputClasses,activation:'softmax',name:'class_output'}).apply(x);return tf.model({inputs:i,outputs:[bO,cO]});}
+        let currentLocLoss=0,currentClassLoss=0;
+        async function trainSimpleDetectionModel(epochs,learningRate,batchSize,trainingImages,numModelOutputClasses){log('🔧 Building Simple Object Detection model...');model=createObjectDetectionModel(numModelOutputClasses);const opt=tf.train.adam(learningRate);log('📊 Preparing all detection data...');const{allXs,allYs}=await prepareDetectionData(trainingImages,numModelOutputClasses);if(!allXs||allXs.shape[0]===0){log("❌ No valid data for detection training.");tf.dispose([allXs,allYs?.trueBoxes,allYs?.trueClasses]);return;}
+        log(`Prepared detection data: Xs shape: ${allXs.shape}, Ys Boxes: ${allYs.trueBoxes.shape}, Ys Classes: ${allYs.trueClasses.shape}`);log('🎯 Starting Detection training loop...');for(let ep=0;ep<epochs;ep++){if(!isTraining){log("Training stopped.");break;}document.getElementById('currentEpoch').textContent=ep+1;let eTL=0,eLL=0,eCL=0,nB=0;const nS=allXs.shape[0],sI=tf.util.createShuffledIndices(nS);
+        for(let i=0;i<nS;i+=batchSize){if(!isTraining)break;const bS=i,bE=Math.min(i+batchSize,nS),aBS=bE-bS,bIA=Array.from(sI.slice(bS,bE));if(aBS===0)continue;const lT=tf.tidy(()=>{const xB=tf.gather(allXs,tf.tensor1d(bIA,'int32')),yBTB=tf.gather(allYs.trueBoxes,tf.tensor1d(bIA,'int32')),yBTC=tf.gather(allYs.trueClasses,tf.tensor1d(bIA,'int32'));const{value,grads}=opt.computeGradients(()=>{const pY=model.apply(xB),pB=pY[0],pC=pY[1];const lL=tf.losses.meanSquaredError(yBTB,pB).mean(),cL=tf.losses.categoricalCrossentropy(yBTC,pC).mean();currentLocLoss=lL.dataSync()[0];currentClassLoss=cL.dataSync()[0];return tf.add(lL.mul(0.5),cL.mul(0.5));},model.trainableWeights);opt.applyGradients(grads);tf.dispose(grads);return{totalLoss:value,locLoss:tf.scalar(currentLocLoss),classLoss:tf.scalar(currentClassLoss)};});
+        eTL+=lT.totalLoss.dataSync()[0];eLL+=lT.locLoss.dataSync()[0];eCL+=lT.classLoss.dataSync()[0];tf.dispose(lT);nB++;await tf.nextFrame();}
+        tf.dispose(sI);if(nB>0){const avgEL=eTL/nB,avgELL=eLL/nB,avgECL=eCL/nB;document.getElementById('trainingLoss').textContent=avgEL.toFixed(4);document.getElementById('locLossDisplay').textContent=`Loc: ${avgELL.toFixed(4)}`;document.getElementById('classLossDisplay').textContent=`Class: ${avgECL.toFixed(4)}`;document.getElementById('accuracy').textContent=avgEL.toFixed(4);log(`Ep ${ep+1}/${epochs} - AvgLoss: ${avgEL.toFixed(4)} (Loc: ${avgELL.toFixed(4)}, Class: ${avgECL.toFixed(4)})`);}
+        const prog=((ep+1)/epochs)*100;document.getElementById('trainingProgress').style.width=prog+'%';if(!isTraining)break;}
+        tf.dispose([allXs,allYs.trueBoxes,allYs.trueClasses]);if(isTraining&&!(model&&model.stopTraining))log('✅ Simple Detection training completed!');}
+        async function prepareDetectionData(trainingImages,numModelOutputClasses){const iT=[],tB=[],tC=[];let cnt=0;for(const iD of trainingImages){if(!iD.annotations||iD.annotations.length===0)continue;const iE=new Image();iE.src=iD.src;await new Promise(r=>iE.onload=r);const oIT=tf.tidy(()=>tf.browser.fromPixels(iE).toFloat().div(255.0)),rIT=tf.image.resizeNearestNeighbor(oIT,[IMG_HEIGHT,IMG_WIDTH]);oIT.dispose();
+        for(const ann of iD.annotations){if(!iD.originalWidth||!iD.originalHeight){log(`Skip ann for ${iD.name} (no dims).`);continue;}iT.push(rIT.clone());const nX=ann.x/iD.originalWidth,nY=ann.y/iD.originalHeight,nW=ann.width/iD.originalWidth,nH=ann.height/iD.originalHeight;tB.push(tf.tensor1d([nX,nY,nW,nH]));const cId=classMap[ann.label];if(cId===undefined){console.warn(`Label "${ann.label}" not in classMap for ${iD.name}.`);iT.pop().dispose();tB.pop().dispose();continue;}
+        tC.push(tf.oneHot(tf.tensor1d([cId],'int32'),numModelOutputClasses).squeeze());cnt++;}rIT.dispose();}
+        if(iT.length===0)return{};log(`Processed ${cnt} anns into ${iT.length} detection samples.`);const aX=tf.stack(iT),aY={trueBoxes:tf.stack(tB),trueClasses:tf.stack(tC)};iT.forEach(t=>t.dispose());tB.forEach(t=>t.dispose());tC.forEach(t=>t.dispose());return{allXs:aX,allYs:aY};}
+        function stopTraining(){isTraining=!1;if(model&&typeof model.stopTraining==='boolean')model.stopTraining=!0;log('⏹️ Training stop requested.');document.getElementById('trainBtn').disabled=!1;document.getElementById('stopBtn').disabled=!0;}
+        function log(msg){const lD=document.getElementById('trainingLog'),ts=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}),p=document.createElement('p');p.textContent=`[${ts}] ${msg}`;lD.appendChild(p);lD.scrollTop=lD.scrollHeight;}
+        async function exportModel(fmt){if(!model){alert('No model!');return;}const s=document.getElementById('exportStatus');s.innerHTML='Processing...';try{if(fmt==='tensorflow'){await model.save('downloads://local-ml-model');s.innerHTML='✅ TF.js Model Exported!';}else if(fmt==='weights'){const w=model.getWeights();const wd=[];for(const t of w){wd.push(Array.from(await t.data()));t.dispose();}downloadBlob(new Blob([JSON.stringify(wd,null,2)],{type:'application/json'}),'model-weights.json');s.innerHTML='✅ Weights Exported!';}else{s.innerHTML='🚧 ONNX Placeholder.';}}catch(e){s.innerHTML=`❌ Export Failed: ${e.message}`;log(e.message);console.error(e);}}
+        function exportDataset(){const dE={images:images.map(i=>({id:i.id,name:i.name,originalWidth:i.originalWidth,originalHeight:i.originalHeight,annotations:i.annotations.map(a=>({label:a.label,classId:classMap[a.label],x:a.x,y:a.y,width:a.width,height:a.height}))})),class_map:classMap,metadata:{totalImages:images.length,labeledImages:images.filter(i=>i.annotations?.length>0).length,totalAnnotations:images.reduce((s,i)=>s+(i.annotations?.length||0),0),exportDate:new Date().toISOString()}};const b=new Blob([JSON.stringify(dE,null,2)],{type:'application/json'});downloadBlob(b,'local-ml-dataset.json');document.getElementById('exportStatus').innerHTML='✅ Dataset Exported!';}
+        function downloadBlob(b,fN){const u=URL.createObjectURL(b),a=document.createElement('a');a.style.display='none';a.href=u;a.download=fN;document.body.appendChild(a);a.click();URL.revokeObjectURL(u);a.remove();}
+        function switchTab(ev,tN){document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));document.getElementById(tN).classList.add('active');const tB=ev?ev.target:document.querySelector(`.tab[onclick*="'${tN}'"]`);if(tB)tB.classList.add('active');if(tN==='labeling')loadImageForLabeling();updateTrainingUI();}
+        document.addEventListener('DOMContentLoaded',()=>{log('🎉 Platform Ready!');updateTrainingUI();try{const sI=localStorage.getItem('ml_trainer_images_v2'),sCM=localStorage.getItem('ml_trainer_classMap_v2'),sNCI=localStorage.getItem('ml_trainer_nextClassId_v2');if(sI)images=JSON.parse(sI);if(sCM)classMap=JSON.parse(sCM);if(sNCI)nextClassId=parseInt(sNCI);}catch(e){log(`LocalStorage Load Err: ${e.message}`);images=[];classMap={};nextClassId=0;}updateDatasetStats();renderImageGrid();if(images.length>0)loadImageForLabeling();});
+        setInterval(()=>{if(images.length>0){try{localStorage.setItem('ml_trainer_images_v2',JSON.stringify(images));localStorage.setItem('ml_trainer_classMap_v2',JSON.stringify(classMap));localStorage.setItem('ml_trainer_nextClassId_v2',nextClassId.toString());}catch(e){log("Autosave err.");}}},15000);
+        ['dragenter','dragover','dragleave','drop'].forEach(eN=>document.addEventListener(eN,eP=>{eP.preventDefault();eP.stopPropagation();}));
+        document.addEventListener('keydown',eK=>{const aT=document.querySelector('.tab-content.active');if(aT&&aT.id==='labeling'){if(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA')return;if(eK.key==='ArrowRight'){eK.preventDefault();nextImage();}else if(eK.key==='ArrowLeft'){eK.preventDefault();prevImage();}}});
     </script>
 </body>
 </html>
